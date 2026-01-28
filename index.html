@@ -1,107 +1,482 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Test dźwięku</title>
-
-  <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0f172a;
-      color: #e5e7eb;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-
-    .container {
-      background: #020617;
-      padding: 24px;
-      border-radius: 14px;
-      width: 100%;
-      max-width: 360px;
-      text-align: center;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-    }
-
-    h1 {
-      font-size: 20px;
-      margin-bottom: 12px;
-    }
-
-    p {
-      font-size: 14px;
-      opacity: 0.85;
-    }
-
-    button {
-      margin-top: 20px;
-      padding: 14px;
-      width: 100%;
-      font-size: 16px;
-      border: none;
-      border-radius: 10px;
-      background: #22c55e;
-      color: #022c22;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    button:active {
-      transform: scale(0.98);
-    }
-
-    .status {
-      margin-top: 16px;
-      font-size: 14px;
-    }
-
-    .ok {
-      color: #4ade80;
-    }
-
-    .error {
-      color: #f87171;
-    }
-  </style>
-</head>
-
-<body>
-  <div class="container">
-    <h1>🔊 Test dźwięku</h1>
-    <p>Naciśnij przycisk, aby sprawdzić czy dźwięk działa na Twoim urządzeniu.</p>
-
-    <button id="playBtn">Odtwórz dźwięk</button>
-
-    <div id="status" class="status"></div>
-  </div>
-
-  <script>
-    const button = document.getElementById("playBtn");
-    const status = document.getElementById("status");
-
-    // Krótki dźwięk testowy (beep) – base64, bez plików zewnętrznych
-    const audio = new Audio(
-      "data:audio/wav;base64," +
-      "UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="
-    );
-
-    button.addEventListener("click", async () => {
-      status.textContent = "Próba odtworzenia dźwięku…";
-
-      try {
-        await audio.play();
-        status.textContent = "✅ Dźwięk działa poprawnie";
-        status.className = "status ok";
-      } catch (err) {
-        status.textContent = "❌ Dźwięk zablokowany lub niedostępny";
-        status.className = "status error";
-        console.error(err);
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>Sound Test</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --card: rgba(255, 255, 255, 0.06);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.70);
+        --ok: #22c55e;
+        --bad: #ef4444;
+        --warn: #f59e0b;
+        --btn: #6d28d9;
+        --btn2: #111827;
+        --shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+        --radius: 18px;
       }
-    });
-  </script>
-</body>
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background:
+          radial-gradient(1200px 700px at 20% 15%, rgba(109, 40, 217, 0.35), transparent 55%),
+          radial-gradient(900px 700px at 85% 25%, rgba(34, 197, 94, 0.18), transparent 55%),
+          radial-gradient(900px 700px at 50% 110%, rgba(59, 130, 246, 0.18), transparent 55%),
+          var(--bg);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+          max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      }
+
+      .wrap {
+        width: min(720px, 100%);
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      header {
+        padding: 18px 18px 12px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 6px 0;
+        letter-spacing: 0.2px;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.35;
+        font-size: 13.5px;
+      }
+
+      main { padding: 18px; }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .btnRow {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      @media (min-width: 520px) {
+        .btnRow { grid-template-columns: 1fr 1fr; }
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 14px;
+        padding: 14px 14px;
+        font-size: 16px;
+        font-weight: 650;
+        color: white;
+        cursor: pointer;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.30);
+        transition: transform 0.05s ease, filter 0.15s ease, border-color 0.15s ease;
+        touch-action: manipulation;
+      }
+      button:active { transform: translateY(1px); }
+      button[disabled] { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+      .primary {
+        background: linear-gradient(135deg, rgba(109, 40, 217, 1), rgba(59, 130, 246, 1));
+        border-color: rgba(255, 255, 255, 0.16);
+      }
+      .secondary {
+        background: rgba(17, 24, 39, 0.75);
+      }
+
+      .status {
+        border-radius: 14px;
+        padding: 12px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.18);
+      }
+
+      .statusTop {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: var(--warn);
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
+      }
+      .dot.ok {
+        background: var(--ok);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+      }
+      .dot.bad {
+        background: var(--bad);
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+      }
+
+      .statusText {
+        font-size: 14px;
+        line-height: 1.35;
+        margin-top: 10px;
+        color: rgba(255, 255, 255, 0.88);
+      }
+
+      details {
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.12);
+        padding: 10px 12px;
+      }
+      summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+      pre {
+        margin: 10px 0 0 0;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.20);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        overflow: auto;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.86);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      footer {
+        padding: 14px 18px 18px 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.10);
+        color: var(--muted);
+        font-size: 12.5px;
+        line-height: 1.35;
+      }
+      .tips {
+        margin: 0;
+        padding-left: 16px;
+      }
+      .tips li { margin: 6px 0; }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 0.95em;
+        color: rgba(255, 255, 255, 0.92);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <header>
+          <h1>Sound test (click-to-play)</h1>
+          <p>
+            This page plays a short test beep <strong>only after a user click</strong>.
+            It uses Web Audio first, with an HTMLAudio fallback generated on the fly.
+          </p>
+        </header>
+
+        <main>
+          <div class="row">
+            <div class="btnRow">
+              <button class="primary" id="playBtn" type="button">Play test sound</button>
+              <button class="secondary" id="resetBtn" type="button">Reset / Clear status</button>
+            </div>
+
+            <div class="status" role="status" aria-live="polite" aria-atomic="true">
+              <div class="statusTop">
+                <span class="pill"><span class="dot" id="dot"></span><span id="statusLabel">Ready</span></span>
+                <span class="pill" id="ctxPill">AudioContext: <code id="ctxState">not created</code></span>
+                <span class="pill">Mode: <code id="mode">—</code></span>
+              </div>
+              <div class="statusText" id="statusText">
+                Tap <strong>Play test sound</strong>. If you hear nothing, check phone volume, media volume,
+                Bluetooth, and silent/DND modes.
+              </div>
+            </div>
+
+            <details>
+              <summary>Debug details</summary>
+              <pre id="log"></pre>
+            </details>
+          </div>
+        </main>
+
+        <footer>
+          <ul class="tips">
+            <li><strong>Android tip</strong>: some devices require the first tap to “unlock” audio. If the first tap fails, tap again.</li>
+            <li><strong>GitHub Pages</strong>: works over HTTPS, no external files required.</li>
+            <li><strong>Policy</strong>: no autoplay—sound is only triggered inside the button click handler.</li>
+          </ul>
+        </footer>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        /** @type {HTMLButtonElement} */
+        const playBtn = document.getElementById("playBtn");
+        /** @type {HTMLButtonElement} */
+        const resetBtn = document.getElementById("resetBtn");
+        const dot = document.getElementById("dot");
+        const statusLabel = document.getElementById("statusLabel");
+        const statusText = document.getElementById("statusText");
+        const ctxStateEl = document.getElementById("ctxState");
+        const modeEl = document.getElementById("mode");
+        const logEl = document.getElementById("log");
+
+        /** @type {AudioContext | null} */
+        let audioCtx = null;
+        let lastPlayAt = 0;
+
+        function nowISO() {
+          return new Date().toISOString().replace("T", " ").replace("Z", "Z");
+        }
+
+        function log(line) {
+          const prefix = `[${nowISO()}] `;
+          logEl.textContent = (logEl.textContent ? logEl.textContent + "\n" : "") + prefix + line;
+        }
+
+        function setStatus(kind, title, message) {
+          // kind: "ready" | "ok" | "bad" | "warn"
+          statusLabel.textContent = title;
+          statusText.textContent = message;
+          dot.classList.remove("ok", "bad");
+          if (kind === "ok") dot.classList.add("ok");
+          else if (kind === "bad") dot.classList.add("bad");
+          // warn/ready keep default amber dot
+        }
+
+        function updateCtxState() {
+          ctxStateEl.textContent = audioCtx ? audioCtx.state : "not created";
+        }
+
+        async function getOrCreateContext() {
+          if (!audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) {
+              throw new Error("Web Audio API not supported (AudioContext missing).");
+            }
+            audioCtx = new Ctx({ latencyHint: "interactive" });
+            log(`Created AudioContext. state=${audioCtx.state}, sampleRate=${audioCtx.sampleRate}`);
+            audioCtx.onstatechange = () => {
+              log(`AudioContext state changed: ${audioCtx.state}`);
+              updateCtxState();
+            };
+          }
+
+          updateCtxState();
+          if (audioCtx.state !== "running") {
+            // On Android, resume MUST happen in a user gesture. This function is only called on click.
+            await audioCtx.resume();
+            log(`Called audioCtx.resume(). state=${audioCtx.state}`);
+            updateCtxState();
+          }
+          return audioCtx;
+        }
+
+        function playBeepWebAudio(ctx) {
+          // Short beep: 440 Hz, ~220 ms, with ramps to avoid clicks.
+          const t0 = ctx.currentTime;
+          const duration = 0.22;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(440, t0);
+
+          gain.gain.setValueAtTime(0.0001, t0);
+          gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(t0);
+          osc.stop(t0 + duration + 0.02);
+          osc.onended = () => {
+            try { osc.disconnect(); } catch (_) {}
+            try { gain.disconnect(); } catch (_) {}
+          };
+        }
+
+        function makeWavBlobUrl({ freq = 440, seconds = 0.22, sampleRate = 44100 } = {}) {
+          // Generate a mono 16-bit PCM WAV in-memory, return an object URL.
+          const numSamples = Math.max(1, Math.floor(sampleRate * seconds));
+          const bytesPerSample = 2;
+          const numChannels = 1;
+          const blockAlign = numChannels * bytesPerSample;
+          const byteRate = sampleRate * blockAlign;
+          const dataSize = numSamples * blockAlign;
+          const buffer = new ArrayBuffer(44 + dataSize);
+          const view = new DataView(buffer);
+
+          function writeStr(offset, s) {
+            for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+          }
+
+          // RIFF header
+          writeStr(0, "RIFF");
+          view.setUint32(4, 36 + dataSize, true);
+          writeStr(8, "WAVE");
+
+          // fmt chunk
+          writeStr(12, "fmt ");
+          view.setUint32(16, 16, true); // PCM
+          view.setUint16(20, 1, true); // AudioFormat = PCM
+          view.setUint16(22, numChannels, true);
+          view.setUint32(24, sampleRate, true);
+          view.setUint32(28, byteRate, true);
+          view.setUint16(32, blockAlign, true);
+          view.setUint16(34, 16, true); // bits per sample
+
+          // data chunk
+          writeStr(36, "data");
+          view.setUint32(40, dataSize, true);
+
+          // Samples: sine with fade-in/out to avoid clicks
+          const fadeSamples = Math.min(Math.floor(sampleRate * 0.02), Math.floor(numSamples / 2));
+          let offset = 44;
+          for (let i = 0; i < numSamples; i++) {
+            const t = i / sampleRate;
+            const raw = Math.sin(2 * Math.PI * freq * t);
+            let amp = 0.20;
+            if (i < fadeSamples) amp *= i / fadeSamples;
+            if (i > numSamples - fadeSamples) amp *= (numSamples - i) / fadeSamples;
+            const s = Math.max(-1, Math.min(1, raw * amp));
+            view.setInt16(offset, Math.floor(s * 32767), true);
+            offset += 2;
+          }
+
+          const blob = new Blob([buffer], { type: "audio/wav" });
+          return URL.createObjectURL(blob);
+        }
+
+        async function playBeepFallbackHtmlAudio() {
+          const url = makeWavBlobUrl();
+          try {
+            const a = new Audio(url);
+            a.preload = "auto";
+            a.crossOrigin = "anonymous";
+            // Must be called in a user gesture; this is invoked from click handler.
+            await a.play();
+            a.onended = () => {
+              try { URL.revokeObjectURL(url); } catch (_) {}
+            };
+          } catch (e) {
+            try { URL.revokeObjectURL(url); } catch (_) {}
+            throw e;
+          }
+        }
+
+        async function onPlayClick() {
+          const t = Date.now();
+          lastPlayAt = t;
+          playBtn.disabled = true;
+          modeEl.textContent = "starting…";
+          setStatus("warn", "Starting…", "Trying to play a short beep. If the first tap fails, tap again.");
+          log("User clicked Play test sound.");
+
+          try {
+            // Primary: Web Audio
+            modeEl.textContent = "Web Audio";
+            const ctx = await getOrCreateContext();
+            log(`Using Web Audio. ctx.state=${ctx.state}`);
+            playBeepWebAudio(ctx);
+            setStatus("ok", "Success", "Beep triggered via Web Audio. If you still hear nothing, check media volume.");
+            log("Beep scheduled (Web Audio).");
+            return;
+          } catch (err1) {
+            const msg1 = err1 && typeof err1 === "object" && "message" in err1 ? String(err1.message) : String(err1);
+            log(`Web Audio failed: ${msg1}`);
+          }
+
+          try {
+            // Fallback: HTMLAudio with generated WAV Blob URL
+            modeEl.textContent = "HTMLAudio (WAV blob)";
+            await playBeepFallbackHtmlAudio();
+            setStatus("ok", "Success", "Beep triggered via HTMLAudio fallback. If you still hear nothing, check media volume.");
+            log("Beep started (HTMLAudio fallback).");
+          } catch (err2) {
+            const msg2 = err2 && typeof err2 === "object" && "message" in err2 ? String(err2.message) : String(err2);
+            modeEl.textContent = "failed";
+            setStatus(
+              "bad",
+              "Error",
+              "Sound could not be played. See Debug details. Try: increase media volume, disable Bluetooth, and tap again."
+            );
+            log(`HTMLAudio fallback failed: ${msg2}`);
+          }
+        }
+
+        function onResetClick() {
+          modeEl.textContent = "—";
+          logEl.textContent = "";
+          setStatus(
+            "ready",
+            "Ready",
+            "Tap Play test sound. If you hear nothing, check phone volume, media volume, Bluetooth, and silent/DND modes."
+          );
+          log("Reset clicked; status cleared.");
+          updateCtxState();
+        }
+
+        // Initial info
+        log(`User agent: ${navigator.userAgent}`);
+        log(`HTTPS: ${location.protocol === "https:" ? "yes" : "no"}; origin=${location.origin}`);
+        updateCtxState();
+        setStatus("ready", "Ready", "Tap Play test sound to run the test.");
+
+        playBtn.addEventListener("click", async () => {
+          // Enforce "only after interaction": everything audio-related happens inside this handler.
+          const start = Date.now();
+          try {
+            await onPlayClick();
+          } finally {
+            // If user clicks repeatedly, re-enable quickly but avoid double-press spam.
+            const elapsed = Date.now() - start;
+            const minDisableMs = 450;
+            const wait = Math.max(0, minDisableMs - elapsed);
+            setTimeout(() => {
+              if (lastPlayAt === start) playBtn.disabled = false;
+            }, wait);
+          }
+        }, { passive: true });
+
+        resetBtn.addEventListener("click", onResetClick, { passive: true });
+      })();
+    </script>
+  </body>
 </html>
