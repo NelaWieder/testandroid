@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Test dźwięku</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      background: #020617;
+      padding: 24px;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      font-size: 20px;
+      margin-bottom: 12px;
+    }
+
+    p {
+      font-size: 14px;
+      opacity: 0.85;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 14px;
+      width: 100%;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      background: #22c55e;
+      color: #022c22;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .status {
+      margin-top: 16px;
+      font-size: 14px;
+    }
+
+    .ok {
+      color: #4ade80;
+    }
+
+    .error {
+      color: #f87171;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>🔊 Test dźwięku</h1>
+    <p>Naciśnij przycisk, aby sprawdzić czy dźwięk działa na Twoim urządzeniu.</p>
+
+    <button id="playBtn">Odtwórz dźwięk</button>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    const button = document.getElementById("playBtn");
+    const status = document.getElementById("status");
+
+    // Krótki dźwięk testowy (beep) – base64, bez plików zewnętrznych
+    const audio = new Audio(
+      "data:audio/wav;base64," +
+      "UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="
+    );
+
+    button.addEventListener("click", async () => {
+      status.textContent = "Próba odtworzenia dźwięku…";
+
+      try {
+        await audio.play();
+        status.textContent = "✅ Dźwięk działa poprawnie";
+        status.className = "status ok";
+      } catch (err) {
+        status.textContent = "❌ Dźwięk zablokowany lub niedostępny";
+        status.className = "status error";
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
