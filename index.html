@@ -177,6 +177,36 @@
         word-break: break-word;
       }
 
+      textarea {
+        width: 100%;
+        min-height: 180px;
+        resize: vertical;
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.20);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.90);
+        font-size: 12px;
+        line-height: 1.35;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      .miniBtnRow {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      @media (min-width: 520px) {
+        .miniBtnRow { grid-template-columns: 1fr 1fr; }
+      }
+      .mini {
+        padding: 10px 12px;
+        font-size: 14px;
+        border-radius: 12px;
+      }
+
       footer {
         padding: 14px 18px 18px 18px;
         border-top: 1px solid rgba(255, 255, 255, 0.10);
@@ -229,13 +259,22 @@
             <details>
               <summary>Szczegóły debugowania</summary>
               <pre id="log"></pre>
+              <div class="miniBtnRow">
+                <button class="secondary mini" id="reportBtn" type="button">Wygeneruj raport debug</button>
+                <button class="secondary mini" id="copyBtn" type="button">Kopiuj raport</button>
+              </div>
+              <textarea id="report" readonly spellcheck="false"></textarea>
+              <p style="margin-top:10px; color: var(--muted); font-size: 12.5px;">
+                Skopiuj raport i wklej mi w czacie. Zawiera informacje o przeglądarce, głosach TTS, stanie
+                <code>speechSynthesis</code> oraz ostatnich błędach/zdarzeniach.
+              </p>
             </details>
           </div>
         </main>
 
         <footer>
           <ul class="tips">
-            <li><strong>Wskazówka dla Androida</strong>: some devices require the first tap to “unlock” audio. If the first tap fails, tap again.</li>
+            <li><strong>Wskazówka dla Androida</strong>: niektóre urządzenia wymagają pierwszego kliknięcia, aby „odblokować” audio. Jeśli pierwsze kliknięcie nie działa, kliknij ponownie.</li>
             <li><strong>GitHub Pages</strong>: działa przez HTTPS, bez zewnętrznych plików.</li>
             <li><strong>Zasada</strong>: brak autoodtwarzania—mowa jest uruchamiana tylko po kliknięciu przycisku.</li>
           </ul>
@@ -255,11 +294,22 @@
         const ctxStateEl = document.getElementById("ctxState");
         const modeEl = document.getElementById("mode");
         const logEl = document.getElementById("log");
+        /** @type {HTMLButtonElement} */
+        const reportBtn = document.getElementById("reportBtn");
+        /** @type {HTMLButtonElement} */
+        const copyBtn = document.getElementById("copyBtn");
+        /** @type {HTMLTextAreaElement} */
+        const reportEl = document.getElementById("report");
 
         const SPEECH_TEXT = "Przemek gra";
         const SPEECH_LANG = "pl-PL";
         let lastPlayAt = 0;
         let currentUtterance = null;
+        /** @type {{at: string, type: string, data?: any}[]} */
+        const ttsEvents = [];
+        let lastTtsError = null;
+        /** @type {string[]} */
+        const logLines = [];
 
         function nowISO() {
           return new Date().toISOString().replace("T", " ").replace("Z", "Z");
@@ -267,7 +317,16 @@
 
         function log(line) {
           const prefix = `[${nowISO()}] `;
-          logEl.textContent = (logEl.textContent ? logEl.textContent + "\n" : "") + prefix + line;
+          const full = prefix + line;
+          logLines.push(full);
+          if (logLines.length > 400) logLines.splice(0, logLines.length - 400);
+          logEl.textContent = logLines.join("\n");
+        }
+
+        function pushTtsEvent(type, data) {
+          const ev = { at: nowISO(), type, data };
+          ttsEvents.push(ev);
+          if (ttsEvents.length > 120) ttsEvents.splice(0, ttsEvents.length - 120);
         }
 
         function setStatus(kind, title, message) {
@@ -294,6 +353,94 @@
           ctxStateEl.textContent = state;
         }
 
+        function safeGetVoices() {
+          try {
+            if (!window.speechSynthesis) return [];
+            return window.speechSynthesis.getVoices() || [];
+          } catch (e) {
+            return [];
+          }
+        }
+
+        function voicesSummary(voices) {
+          return voices.map(v => ({
+            name: v.name,
+            lang: v.lang,
+            localService: v.localService,
+            default: v.default,
+            voiceURI: v.voiceURI
+          }));
+        }
+
+        function buildReport() {
+          const synth = window.speechSynthesis || null;
+          const voices = safeGetVoices();
+          const polishVoices = voices.filter(v => (v.lang || "").toLowerCase().startsWith("pl"));
+
+          return {
+            generatedAt: nowISO(),
+            page: {
+              href: location.href,
+              origin: location.origin,
+              protocol: location.protocol,
+              https: location.protocol === "https:",
+            },
+            device: {
+              userAgent: navigator.userAgent,
+              platform: navigator.platform || null,
+              language: navigator.language || null,
+              languages: navigator.languages || null,
+            },
+            webSpeechApi: {
+              supported: !!window.speechSynthesis,
+              utteranceSupported: typeof SpeechSynthesisUtterance !== "undefined",
+              onvoiceschangedSupported: !!(synth && "onvoiceschanged" in synth),
+            },
+            speechSynthesisState: synth
+              ? {
+                  speaking: !!synth.speaking,
+                  pending: !!synth.pending,
+                  paused: !!synth.paused,
+                }
+              : null,
+            voices: {
+              total: voices.length,
+              polishCount: polishVoices.length,
+              list: voicesSummary(voices),
+            },
+            lastUtterance: currentUtterance
+              ? {
+                  text: currentUtterance.text,
+                  lang: currentUtterance.lang,
+                  rate: currentUtterance.rate,
+                  pitch: currentUtterance.pitch,
+                  volume: currentUtterance.volume,
+                  voice: currentUtterance.voice
+                    ? {
+                        name: currentUtterance.voice.name,
+                        lang: currentUtterance.voice.lang,
+                        localService: currentUtterance.voice.localService,
+                        default: currentUtterance.voice.default,
+                        voiceURI: currentUtterance.voice.voiceURI,
+                      }
+                    : null,
+                }
+              : null,
+            lastTtsError,
+            ttsEvents,
+            recentLog: logLines.slice(-120),
+          };
+        }
+
+        function updateReport() {
+          try {
+            const report = buildReport();
+            reportEl.value = JSON.stringify(report, null, 2);
+          } catch (e) {
+            reportEl.value = `Nie udało się zbudować raportu: ${e && e.message ? e.message : String(e)}`;
+          }
+        }
+
         function checkSpeechSupport() {
           if (!window.speechSynthesis) {
             return { supported: false, error: "Web Speech API (speechSynthesis) nie jest obsługiwane w tej przeglądarce." };
@@ -313,30 +460,48 @@
             utterance.rate = 1.0;
             utterance.pitch = 1.0;
             utterance.volume = 1.0;
+
+            // Try to pick a matching Polish voice if available.
+            const voices = safeGetVoices();
+            const preferred =
+              voices.find(v => (v.lang || "").toLowerCase() === lang.toLowerCase()) ||
+              voices.find(v => (v.lang || "").toLowerCase().startsWith("pl"));
+            if (preferred) {
+              utterance.voice = preferred;
+            }
             
             utterance.onstart = () => {
               log(`Rozpoczęto mówienie: "${text}"`);
+              pushTtsEvent("start", { text, lang: utterance.lang, voice: utterance.voice ? { name: utterance.voice.name, lang: utterance.voice.lang } : null });
               updateSpeechState();
+              updateReport();
             };
             
             utterance.onend = () => {
               log(`Zakończono mówienie.`);
+              pushTtsEvent("end");
               currentUtterance = null;
               updateSpeechState();
+              updateReport();
               resolve();
             };
             
             utterance.onerror = (event) => {
-              const errMsg = event.error ? `Błąd: ${event.error}` : "Nieznany błąd podczas mówienia.";
+              const errMsg = event && event.error ? `Błąd: ${event.error}` : "Nieznany błąd podczas mówienia.";
               log(`Błąd TTS: ${errMsg}`);
+              lastTtsError = { at: nowISO(), message: errMsg, raw: event ? { error: event.error, elapsedTime: event.elapsedTime, name: event.name } : null };
+              pushTtsEvent("error", lastTtsError);
               currentUtterance = null;
               updateSpeechState();
+              updateReport();
               reject(new Error(errMsg));
             };
             
             currentUtterance = utterance;
+            pushTtsEvent("speak_called", { text, lang: utterance.lang, hasVoice: !!utterance.voice, voicesNow: safeGetVoices().length });
             synth.speak(utterance);
             updateSpeechState();
+            updateReport();
           });
         }
 
@@ -376,7 +541,10 @@
             window.speechSynthesis.cancel();
           }
           currentUtterance = null;
+          lastTtsError = null;
+          ttsEvents.length = 0;
           logEl.textContent = "";
+          logLines.length = 0;
           setStatus(
             "ready",
             "Gotowe",
@@ -384,6 +552,7 @@
           );
           log("Reset kliknięty; status wyczyszczony.");
           updateSpeechState();
+          updateReport();
         }
 
         // Initial info
@@ -408,6 +577,7 @@
         
         updateSpeechState();
         setStatus("ready", "Gotowe", `Kliknij przycisk, aby usłyszeć "${SPEECH_TEXT}".`);
+        updateReport();
         
         // Some browsers load voices asynchronously
         if (window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
@@ -417,8 +587,40 @@
             if (polishVoices.length > 0) {
               log(`Głosy załadowane: ${polishVoices.map(v => `${v.name} (${v.lang})`).join(", ")}`);
             }
+            pushTtsEvent("voiceschanged", { total: voices.length, polish: polishVoices.length });
+            updateReport();
           };
         }
+
+        reportBtn.addEventListener("click", () => {
+          log("Wygenerowano raport debug (ręcznie).");
+          pushTtsEvent("report_generated");
+          updateSpeechState();
+          updateReport();
+          try { reportEl.focus(); } catch (_) {}
+        }, { passive: true });
+
+        copyBtn.addEventListener("click", async () => {
+          updateReport();
+          const text = reportEl.value || "";
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              log("Raport skopiowany do schowka (Clipboard API).");
+            } else {
+              reportEl.focus();
+              reportEl.select();
+              const ok = document.execCommand("copy");
+              log(ok ? "Raport skopiowany do schowka (execCommand)." : "Nie udało się skopiować (execCommand=false). Skopiuj ręcznie.");
+            }
+            setStatus("ok", "Skopiowano", "Raport debug został skopiowany do schowka. Wklej go tutaj w czacie.");
+          } catch (e) {
+            log(`Kopiowanie nie powiodło się: ${e && e.message ? e.message : String(e)}`);
+            setStatus("warn", "Nie skopiowano", "Nie udało się skopiować automatycznie. Skopiuj tekst z pola raportu ręcznie.");
+          } finally {
+            updateReport();
+          }
+        }, { passive: true });
 
         playBtn.addEventListener("click", async () => {
           // Enforce "only after interaction": everything audio-related happens inside this handler.
@@ -433,6 +635,8 @@
             setTimeout(() => {
               if (lastPlayAt === start) playBtn.disabled = false;
             }, wait);
+            updateSpeechState();
+            updateReport();
           }
         }, { passive: true });
 
