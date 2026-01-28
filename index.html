@@ -461,16 +461,36 @@
             utterance.pitch = 1.0;
             utterance.volume = 1.0;
 
-            // Try to pick a matching Polish voice if available.
+            // Try to pick a matching voice: Polish first, then fallback to any available voice
             const voices = safeGetVoices();
-            const preferred =
+            let preferred =
               voices.find(v => (v.lang || "").toLowerCase() === lang.toLowerCase()) ||
               voices.find(v => (v.lang || "").toLowerCase().startsWith("pl"));
-            if (preferred) {
-              utterance.voice = preferred;
+            
+            // Fallback: jeśli brak polskiego, użyj pierwszego dostępnego głosu
+            if (!preferred && voices.length > 0) {
+              preferred = voices[0];
+              log(`Uwaga: brak głosu polskiego, używam fallback: ${preferred.name} (${preferred.lang})`);
             }
             
+            if (preferred) {
+              utterance.voice = preferred;
+              utterance.lang = preferred.lang; // Ustaw język zgodny z głosem
+            }
+            
+            let startTimeout = null;
+            let endTimeout = null;
+            let startFired = false;
+            let endFired = false;
+            
+            const cleanup = () => {
+              if (startTimeout) clearTimeout(startTimeout);
+              if (endTimeout) clearTimeout(endTimeout);
+            };
+            
             utterance.onstart = () => {
+              startFired = true;
+              if (startTimeout) clearTimeout(startTimeout);
               log(`Rozpoczęto mówienie: "${text}"`);
               pushTtsEvent("start", { text, lang: utterance.lang, voice: utterance.voice ? { name: utterance.voice.name, lang: utterance.voice.lang } : null });
               updateSpeechState();
@@ -478,6 +498,8 @@
             };
             
             utterance.onend = () => {
+              endFired = true;
+              cleanup();
               log(`Zakończono mówienie.`);
               pushTtsEvent("end");
               currentUtterance = null;
@@ -487,6 +509,7 @@
             };
             
             utterance.onerror = (event) => {
+              cleanup();
               const errMsg = event && event.error ? `Błąd: ${event.error}` : "Nieznany błąd podczas mówienia.";
               log(`Błąd TTS: ${errMsg}`);
               lastTtsError = { at: nowISO(), message: errMsg, raw: event ? { error: event.error, elapsedTime: event.elapsedTime, name: event.name } : null };
@@ -498,10 +521,89 @@
             };
             
             currentUtterance = utterance;
-            pushTtsEvent("speak_called", { text, lang: utterance.lang, hasVoice: !!utterance.voice, voicesNow: safeGetVoices().length });
+            pushTtsEvent("speak_called", { text, lang: utterance.lang, hasVoice: !!utterance.voice, voiceName: utterance.voice ? utterance.voice.name : null, voicesNow: voices.length });
+            
+            // Timeout dla onstart - Android Chrome czasami nie wywołuje tego eventu
+            startTimeout = setTimeout(() => {
+              if (!startFired) {
+                log(`UWAGA: onstart nie został wywołany po 2 sekundach, ale speaking=${synth.speaking}`);
+                pushTtsEvent("start_timeout", { speaking: synth.speaking, pending: synth.pending });
+                // Jeśli speaking jest true, prawdopodobnie działa, ale bez eventu
+                if (synth.speaking) {
+                  startFired = true; // Symuluj start
+                  log(`Mówienie wydaje się działać (speaking=true), kontynuuję...`);
+                }
+              }
+            }, 2000);
+            
+            // Timeout dla onend - jeśli nie wywoła się w 10 sekundach, uznać za problem
+            endTimeout = setTimeout(() => {
+              if (!endFired) {
+                log(`UWAGA: onend nie został wywołany po 10 sekundach. speaking=${synth.speaking}, pending=${synth.pending}`);
+                pushTtsEvent("end_timeout", { speaking: synth.speaking, pending: synth.pending });
+                if (!synth.speaking && !synth.pending) {
+                  // Wydaje się, że się skończyło, ale bez eventu
+                  endFired = true;
+                  cleanup();
+                  log(`Mówienie wydaje się zakończone (speaking=false, pending=false), kończę...`);
+                  currentUtterance = null;
+                  updateSpeechState();
+                  updateReport();
+                  resolve();
+                } else {
+                  // Nadal mówi lub czeka - może być problem
+                  log(`Mówienie nadal trwa lub czeka. Anuluję i zgłaszam błąd.`);
+                  synth.cancel();
+                  cleanup();
+                  currentUtterance = null;
+                  updateSpeechState();
+                  updateReport();
+                  reject(new Error("Timeout: onend nie został wywołany i mówienie nie zakończyło się w oczekiwanym czasie."));
+                }
+              }
+            }, 10000);
+            
             synth.speak(utterance);
             updateSpeechState();
             updateReport();
+          });
+        }
+
+        async function playBeepWebAudio() {
+          return new Promise((resolve, reject) => {
+            try {
+              const Ctx = window.AudioContext || window.webkitAudioContext;
+              if (!Ctx) {
+                reject(new Error("Web Audio API nie jest obsługiwane."));
+                return;
+              }
+              const ctx = new Ctx({ latencyHint: "interactive" });
+              const t0 = ctx.currentTime;
+              const duration = 0.3;
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+
+              osc.type = "sine";
+              osc.frequency.setValueAtTime(440, t0);
+
+              gain.gain.setValueAtTime(0.0001, t0);
+              gain.gain.exponentialRampToValueAtTime(0.15, t0 + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+
+              osc.start(t0);
+              osc.stop(t0 + duration + 0.02);
+              osc.onended = () => {
+                try { osc.disconnect(); } catch (_) {}
+                try { gain.disconnect(); } catch (_) {}
+                ctx.close().catch(() => {});
+                resolve();
+              };
+            } catch (e) {
+              reject(e);
+            }
           });
         }
 
@@ -520,18 +622,42 @@
           }
 
           try {
-            log(`Używanie Web Speech API. Tekst: "${SPEECH_TEXT}", język: ${SPEECH_LANG}`);
+            const voices = safeGetVoices();
+            const polishVoices = voices.filter(v => (v.lang || "").toLowerCase().startsWith("pl"));
+            const willUseVoice = voices.find(v => (v.lang || "").toLowerCase() === SPEECH_LANG.toLowerCase()) ||
+                                 voices.find(v => (v.lang || "").toLowerCase().startsWith("pl")) ||
+                                 (voices.length > 0 ? voices[0] : null);
+            
+            if (willUseVoice) {
+              modeEl.textContent = willUseVoice.lang;
+              log(`Używanie Web Speech API. Tekst: "${SPEECH_TEXT}", język: ${SPEECH_LANG}, głos: ${willUseVoice.name} (${willUseVoice.lang})`);
+            } else {
+              modeEl.textContent = SPEECH_LANG + " (domyślny)";
+              log(`Używanie Web Speech API. Tekst: "${SPEECH_TEXT}", język: ${SPEECH_LANG} (brak głosów, użyję domyślnego)`);
+            }
+            
             await speakText(SPEECH_TEXT, SPEECH_LANG);
             setStatus("ok", "Sukces", `Odczytano "${SPEECH_TEXT}". Jeśli nic nie słyszysz, sprawdź głośność i tryb cichy.`);
             log(`Mówienie zakończone pomyślnie.`);
           } catch (err) {
             const msg = err && typeof err === "object" && "message" in err ? String(err.message) : String(err);
-            setStatus(
-              "bad",
-              "Błąd",
-              `Nie udało się odczytać tekstu. Zobacz szczegóły debugowania. Spróbuj: zwiększ głośność, wyłącz Bluetooth i kliknij ponownie.`
-            );
-            log(`Błąd mówienia: ${msg}`);
+            log(`Błąd TTS: ${msg}. Próbuję fallback Web Audio...`);
+            
+            // Fallback: Web Audio beep
+            try {
+              modeEl.textContent = "Web Audio (fallback)";
+              await playBeepWebAudio();
+              setStatus("warn", "Fallback", `TTS nie zadziałał, ale Web Audio działa. Sprawdź czy głosy TTS są dostępne w ustawieniach systemowych.`);
+              log(`Fallback Web Audio zakończony pomyślnie.`);
+            } catch (audioErr) {
+              const audioMsg = audioErr && typeof audioErr === "object" && "message" in audioErr ? String(audioErr.message) : String(audioErr);
+              setStatus(
+                "bad",
+                "Błąd",
+                `Nie udało się odczytać tekstu ani odtworzyć dźwięku. Zobacz szczegóły debugowania. Spróbuj: zwiększ głośność, wyłącz Bluetooth i kliknij ponownie.`
+              );
+              log(`Fallback Web Audio również nie zadziałał: ${audioMsg}`);
+            }
           }
         }
 
@@ -545,6 +671,7 @@
           ttsEvents.length = 0;
           logEl.textContent = "";
           logLines.length = 0;
+          modeEl.textContent = SPEECH_LANG;
           setStatus(
             "ready",
             "Gotowe",
